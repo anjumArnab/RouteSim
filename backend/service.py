@@ -18,8 +18,10 @@ from backend.environment import (
     REWARDS,
     Action,
     GridWorld,
+    Position,
     RouteSimError,
     Status,
+    StepResult,
     position_dict,
 )
 
@@ -112,7 +114,7 @@ class EpisodeService:
             return episode, {
                 "action": step.action.value,
                 "outcome": step.outcome.value,
-                "reward": step.reward,
+                **_reward_fields(step),
                 "previous_position": position_dict(step.previous_position),
                 **_observation(episode),
             }
@@ -217,6 +219,8 @@ class EpisodeService:
             "result": result,
             "error": error,
             "reward": result.get("reward") if result else None,
+            "reward_breakdown": result.get("reward_breakdown") if result else None,
+            "coin_collected": result.get("coin_collected") if result else None,
             "changes": changes or [],
         }
         space.log.append(entry)
@@ -254,7 +258,29 @@ def _tracked_state(episode: Episode | None) -> dict[str, Any]:
         "position": position_dict(world.position),
         "step_count": world.step_count,
         "cumulative_reward": world.cumulative_reward,
+        "coins_collected": len(world.collected_coins),
         "status": world.status.value,
+    }
+
+
+def _positions(positions: list[Position]) -> list[dict[str, int]]:
+    return [position_dict(p) for p in positions]
+
+
+def _coin_state(world: GridWorld) -> dict[str, Any]:
+    return {
+        "total_coins": len(world.layout.coins),
+        "available_coins": _positions(world.available_coins()),
+        "collected_coin_positions": _positions(world.collected_coins),
+    }
+
+
+def _reward_fields(step: StepResult) -> dict[str, Any]:
+    coin = step.coin_collected
+    return {
+        "reward": step.reward,
+        "reward_breakdown": dict(step.breakdown),
+        "coin_collected": position_dict(coin) if coin else None,
     }
 
 
@@ -264,8 +290,9 @@ def _dashboard_state(episode: Episode) -> dict[str, Any]:
         "created_at": episode.created_at,
         "layout": episode.world.layout.to_dict(),
         "max_steps": episode.world.max_steps,
-        "path": [position_dict(p) for p in episode.world.path()],
+        "path": _positions(episode.world.path()),
         **_tracked_state(episode),
+        **_coin_state(episode.world),
     }
 
 
@@ -274,6 +301,7 @@ def _observation(episode: Episode) -> dict[str, Any]:
     return {
         "episode_id": episode.episode_id,
         **_tracked_state(episode),
+        **_coin_state(world),
         "done": world.done,
         "steps_remaining": world.max_steps - world.step_count,
         "start": position_dict(world.layout.start),
@@ -288,10 +316,13 @@ def _inspection(episode: Episode) -> dict[str, Any]:
     return {
         "episode_id": episode.episode_id,
         **world.layout.to_dict(),
-        "map": world.layout.to_map(),
+        "coins_collected": len(world.collected_coins),
+        **_coin_state(world),
+        "map": world.layout.to_map(world.available_coins()),
         "legend": {
             "S": "start",
             "G": "goal",
+            "C": "coin still available (move onto it to collect it, once per episode)",
             "#": "obstacle (impassable)",
             "H": "hazard (ends the episode)",
             ".": "free",
@@ -299,7 +330,11 @@ def _inspection(episode: Episode) -> dict[str, Any]:
         "coordinates": "row 0 is the top row, col 0 is the left column; 'up' decreases row",
         "actions": [a.value for a in Action],
         "max_steps": world.max_steps,
-        "rewards": {outcome.value: reward for outcome, reward in REWARDS.items()},
+        "rewards": dict(REWARDS),
+        "reward_rules": (
+            "Every move earns 'step', plus 'collision', 'coin', 'goal' or 'hazard' if the "
+            "move causes that. Coins are optional: reaching the goal ends the episode."
+        ),
     }
 
 
@@ -308,6 +343,7 @@ def _results(episode: Episode) -> dict[str, Any]:
     return {
         "episode_id": episode.episode_id,
         **_tracked_state(episode),
+        **_coin_state(world),
         "done": world.done,
         "reached_goal": world.status is Status.SUCCEEDED,
         "steps_remaining": world.max_steps - world.step_count,
@@ -316,7 +352,7 @@ def _results(episode: Episode) -> dict[str, Any]:
                 "step": number,
                 "action": step.action.value,
                 "outcome": step.outcome.value,
-                "reward": step.reward,
+                **_reward_fields(step),
                 "position": position_dict(step.position),
             }
             for number, step in enumerate(world.history, start=1)
