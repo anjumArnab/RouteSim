@@ -3,7 +3,7 @@
 import httpx2
 import pytest
 
-from conftest import ALICE, BOB, WINNING_PATH, call, call_error, mcp_client
+from conftest import ALICE, BOB, SHORTEST_ROUTE, call, call_error, mcp_client
 
 pytestmark = pytest.mark.anyio
 
@@ -53,6 +53,9 @@ async def test_get_observation(client):
     assert observation["valid_actions"] == ["down", "right"]
     assert observation["neighbors"]["up"] == "wall"
     assert observation["steps_remaining"] == 50
+    assert observation["total_coins"] == 5
+    assert observation["coins_collected"] == 0
+    assert {"row": 2, "col": 1} in observation["available_coins"]
 
 
 async def test_inspect_environment(client):
@@ -62,7 +65,15 @@ async def test_inspect_environment(client):
     assert len(inspection["map"]) == 7
     assert {"row": 1, "col": 1} in inspection["obstacles"]
     assert {"row": 1, "col": 4} in inspection["hazards"]
-    assert inspection["rewards"] == {"moved": -1, "blocked": -2, "hazard": -20, "goal": 20}
+    assert inspection["rewards"] == {
+        "step": -1,
+        "collision": -1,
+        "coin": 5,
+        "goal": 20,
+        "hazard": -20,
+    }
+    assert len(inspection["available_coins"]) == 5
+    assert "".join(inspection["map"]).count("C") == 5
 
 
 @pytest.mark.parametrize(
@@ -86,11 +97,12 @@ async def test_move_agent_in_each_direction(client, moves, position):
 
 async def test_get_episode_status_returns_results(client):
     episode_id = (await call(client, "start_episode"))["episode_id"]
-    for direction in WINNING_PATH:
+    for direction in SHORTEST_ROUTE:
         await call(client, "move_agent", episode_id=episode_id, direction=direction)
     results = await call(client, "get_episode_status", episode_id=episode_id)
     assert results["status"] == "succeeded"
-    assert results["cumulative_reward"] == 9
+    assert results["cumulative_reward"] == 8
+    assert results["coins_collected"] == 0
     assert len(results["trajectory"]) == 12
 
 

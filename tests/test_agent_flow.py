@@ -18,7 +18,7 @@ STEPS = {"up": (-1, 0), "down": (1, 0), "left": (0, -1), "right": (0, 1)}
 
 
 def plan_route(inspection: dict) -> list[str]:
-    """Breadth-first search over the map the tool returned."""
+    """Shortest coin-free route, by breadth-first search over the returned map."""
     grid = inspection["map"]
     start = (inspection["start"]["row"], inspection["start"]["col"])
     queue = deque([(start, [])])
@@ -29,7 +29,7 @@ def plan_route(inspection: dict) -> list[str]:
             return route
         for direction, (d_row, d_col) in STEPS.items():
             r, c = row + d_row, col + d_col
-            if 0 <= r < 7 and 0 <= c < 7 and (r, c) not in seen and grid[r][c] not in "#H":
+            if 0 <= r < 7 and 0 <= c < 7 and (r, c) not in seen and grid[r][c] not in "#HC":
                 seen.add((r, c))
                 queue.append(((r, c), [*route, direction]))
     raise AssertionError("No route to the goal")
@@ -65,7 +65,7 @@ async def test_agent_fails_resets_and_reaches_the_goal(live_server):
                 for direction in ["right"] * 4 + ["down"]:
                     last = await step("move_agent", episode_id=episode_id, direction=direction)
                 assert last["status"] == "failed"
-                assert last["cumulative_reward"] == -26
+                assert last["cumulative_reward"] == -27
 
                 await call_error(agent, "move_agent", episode_id=episode_id, direction="down")
                 rejected = await asyncio.wait_for(anext(events), timeout=5)
@@ -83,7 +83,7 @@ async def test_agent_fails_resets_and_reaches_the_goal(live_server):
 
     assert results["reached_goal"]
     assert results["step_count"] == len(route) == 12
-    assert results["cumulative_reward"] == 9
+    assert results["cumulative_reward"] == 8
 
     # What the dashboard was told matches what the agent saw.
     final = received[-1]["episode"]

@@ -9,7 +9,7 @@ from backend import service as service_module
 from backend.auth import Authenticator
 from backend.config import ConfigError, Settings, parse_api_keys
 from backend.service import EpisodeNotFoundError, EpisodeService, InvalidActionError
-from conftest import ALICE, API_KEYS, WINNING_PATH, bearer, sse_events
+from conftest import ALICE, API_KEYS, BALANCED_ROUTE, bearer, sse_events
 
 # ----- service ----------------------------------------------------------------
 
@@ -57,6 +57,7 @@ def test_activity_log_records_calls_arguments_changes_and_rewards():
         "position",
         "step_count",
         "cumulative_reward",
+        "coins_collected",
         "status",
     }
     assert move["arguments"] == {"episode_id": episode_id, "direction": "right"}
@@ -105,14 +106,67 @@ def test_long_arguments_are_clipped_in_the_log():
 def test_results_include_the_trajectory():
     service = EpisodeService()
     episode_id = service.start_episode("alice")["episode_id"]
-    for direction in WINNING_PATH:
+    for direction in BALANCED_ROUTE:
         service.move_agent("alice", episode_id, direction)
     results = service.get_episode_status("alice", episode_id)
     assert results["status"] == "succeeded"
     assert results["done"] and results["reached_goal"]
-    assert results["cumulative_reward"] == 9
-    assert [t["action"] for t in results["trajectory"]] == WINNING_PATH
-    assert sum(t["reward"] for t in results["trajectory"]) == 9
+    assert results["cumulative_reward"] == 22
+    assert (results["coins_collected"], results["total_coins"]) == (4, 5)
+    assert results["available_coins"] == [{"row": 6, "col": 0}]
+    assert [t["action"] for t in results["trajectory"]] == BALANCED_ROUTE
+    assert sum(t["reward"] for t in results["trajectory"]) == 22
+    picked_up = [t["coin_collected"] for t in results["trajectory"] if t["coin_collected"]]
+    assert picked_up == results["collected_coin_positions"]
+
+
+def test_observation_inspection_and_dashboard_agree_on_coins():
+    service = EpisodeService()
+    episode_id = service.start_episode("alice")["episode_id"]
+    for direction in ["down", "down", "right"]:
+        service.move_agent("alice", episode_id, direction)
+    observation = service.get_observation("alice", episode_id)
+    inspection = service.inspect_environment("alice", episode_id)
+    [dashboard] = service.snapshot("alice")["episodes"]
+
+    taken = {"row": 2, "col": 1}
+    for view in (observation, inspection, dashboard):
+        assert view["coins_collected"] == 1
+        assert view["total_coins"] == 5
+        assert view["collected_coin_positions"] == [taken]
+        assert len(view["available_coins"]) == 4
+        assert taken not in view["available_coins"]
+    assert inspection["map"][2] == "....#C."
+    assert "".join(inspection["map"]).count("C") == 4
+
+
+def test_coin_collection_is_recorded_in_the_activity_log():
+    service = EpisodeService()
+    episode_id = service.start_episode("alice")["episode_id"]
+    for direction in ["down", "down", "right", "left", "right"]:
+        service.move_agent("alice", episode_id, direction)
+    moves_logged = service.snapshot("alice")["log"][1:]
+
+    pickup = moves_logged[2]
+    assert pickup["coin_collected"] == {"row": 2, "col": 1}
+    assert pickup["reward"] == 4
+    assert pickup["reward_breakdown"] == {"step": -1, "coin": 5}
+    assert {"field": "coins_collected", "before": 0, "after": 1} in pickup["changes"]
+    assert {"field": "cumulative_reward", "before": -2, "after": 2} in pickup["changes"]
+    # Only one pickup, even though the agent returned to the cell.
+    assert [e["coin_collected"] is not None for e in moves_logged] == [0, 0, 1, 0, 0]
+
+
+def test_reset_returns_the_coins():
+    service = EpisodeService()
+    episode_id = service.start_episode("alice")["episode_id"]
+    for direction in ["down", "down", "right"]:
+        service.move_agent("alice", episode_id, direction)
+    observation = service.reset_episode("alice", episode_id)
+    assert len(observation["available_coins"]) == 5
+    assert observation["coins_collected"] == 0
+    changes = service.snapshot("alice")["log"][-1]["changes"]
+    assert {"field": "coins_collected", "before": 1, "after": 0} in changes
 
 
 def test_oldest_episode_is_evicted_at_the_limit(monkeypatch):

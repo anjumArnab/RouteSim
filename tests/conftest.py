@@ -20,8 +20,17 @@ ALICE = "alice-test-token-0123456789"
 BOB = "bob-test-token-0123456789abc"
 API_KEYS = {"alice": ALICE, "bob": BOB}
 
-# Shortest route through the default layout: 12 moves, no hazards or obstacles.
-WINNING_PATH = ["right"] * 5 + ["down"] * 4 + ["right"] + ["down"] * 2
+
+def moves(text: str) -> list[str]:
+    """Expand "ddr" into ["down", "down", "right"]."""
+    names = {"u": "up", "d": "down", "l": "left", "r": "right"}
+    return [names[letter] for letter in text]
+
+
+# Three ways through the default layout.
+SHORTEST_ROUTE = moves("ddddrdrrdrrr")  # 12 moves, no coins, reward 8
+BALANCED_ROUTE = moves("ddrrruurrrddlddrdd")  # 18 moves, 4 coins, reward 22
+ALL_COINS_ROUTE = moves("ddddrddlruuluurrruurrrddlddrdd")  # 30 moves, 5 coins, reward 15
 
 
 def bearer(token: str) -> dict[str, str]:
