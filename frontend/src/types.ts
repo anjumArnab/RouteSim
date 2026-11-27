@@ -23,13 +23,18 @@ export interface Episode {
   position: Position;
   // Cells moved through, beginning at the start. Absent if the server predates it.
   path?: Position[];
+  // Coin fields are likewise absent from a server that predates coins.
+  total_coins?: number;
+  coins_collected?: number;
+  available_coins?: Position[];
+  collected_coin_positions?: Position[];
   step_count: number;
   cumulative_reward: number;
   status: Status;
 }
 
 export interface StateChange {
-  field: "position" | "step_count" | "cumulative_reward" | "status";
+  field: "position" | "step_count" | "cumulative_reward" | "coins_collected" | "status";
   before: Position | number | string | null;
   after: Position | number | string;
 }
@@ -44,6 +49,8 @@ export interface LogEntry {
   result: Record<string, unknown> | null;
   error: string | null;
   reward: number | null;
+  reward_breakdown?: Record<string, number> | null; // the named parts of the reward
+  coin_collected?: Position | null;
   changes: StateChange[];
 }
 

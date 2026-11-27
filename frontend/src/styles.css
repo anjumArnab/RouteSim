@@ -12,6 +12,8 @@
   --node-ring: #ffffff;
   --trail: #12998a;
   --agent: #1fb398;
+  --coin: #f2a600;
+  --coin-edge: #9c6a00;
   --good: #0aac23;
   --warning: #fbb315;
   --critical: #dc3c3d;
@@ -150,8 +152,8 @@ header {
 /* Episode status */
 
 .stats {
-  display: grid;
-  grid-template-columns: repeat(3, auto);
+  display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
   margin: 0 0 16px;
@@ -162,7 +164,7 @@ header {
 }
 
 .stats .wide {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
 }
 
 .stats dt {
@@ -237,6 +239,61 @@ header {
 
 .obstacle {
   fill: var(--obstacle);
+}
+
+.agent-trail {
+  fill: var(--trail);
+}
+
+.coin circle {
+  fill: var(--coin);
+  stroke: var(--coin-edge);
+  stroke-width: 4;
+}
+
+.coin .coin-rim {
+  fill: none;
+  stroke: #ffe08a;
+  stroke-width: 3;
+}
+
+.coin-collected circle {
+  fill: rgb(255 255 255 / 18%);
+  stroke: #ffffff;
+  stroke-width: 4;
+  stroke-dasharray: 9 6;
+}
+
+.coin text,
+.coin-collected text {
+  font-size: 28px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.coin text {
+  fill: #3d2900;
+}
+
+.coin-collected text {
+  fill: #ffffff;
+}
+
+.coin-event {
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.coin-event::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border: 1px solid var(--coin-edge);
+  border-radius: 50%;
+  background: var(--coin);
 }
 
 .node circle {

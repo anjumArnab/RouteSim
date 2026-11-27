@@ -4,6 +4,7 @@ const FIELD_NAMES: Record<StateChange["field"], string> = {
   position: "position",
   step_count: "steps",
   cumulative_reward: "total reward",
+  coins_collected: "coins",
   status: "status",
 };
 
@@ -13,6 +14,13 @@ function formatValue(value: StateChange["after"]): string {
 }
 
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
+
+/** The parts of a reward as reported by the backend, when there is more than one. */
+function breakdownText(breakdown: LogEntry["reward_breakdown"]): string {
+  const parts = Object.entries(breakdown ?? {});
+  if (parts.length < 2) return "";
+  return ` (${parts.map(([name, value]) => `${name} ${signed(value)}`).join(", ")})`;
+}
 
 function Entry({ entry }: { entry: LogEntry }) {
   const args = Object.entries(entry.arguments);
@@ -26,7 +34,12 @@ function Entry({ entry }: { entry: LogEntry }) {
           {entry.ok ? "✓ ok" : "✕ error"}
           {typeof outcome === "string" && `: ${outcome}`}
         </span>
-        {entry.reward !== null && <span className="reward">reward {signed(entry.reward)}</span>}
+        {entry.reward !== null && (
+          <span className="reward">
+            reward {signed(entry.reward)}
+            {breakdownText(entry.reward_breakdown)}
+          </span>
+        )}
       </div>
       <div className="mono muted">
         {args.length === 0
@@ -34,6 +47,9 @@ function Entry({ entry }: { entry: LogEntry }) {
           : args.map(([name, value]) => `${name}=${JSON.stringify(value)}`).join("  ")}
       </div>
       {entry.error && <div className="error-text">{entry.error}</div>}
+      {entry.coin_collected && (
+        <div className="coin-event">Coin collected at {formatValue(entry.coin_collected)}</div>
+      )}
       {entry.changes.length > 0 && (
         <ul className="changes">
           {entry.changes.map((change) => (

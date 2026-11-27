@@ -5,12 +5,15 @@ const CELL = 100; // SVG units per grid cell
 const same = (a: Position, b: Position) => a.row === b.row && a.col === b.col;
 const center = ({ row, col }: Position) => ({ x: (col + 0.5) * CELL, y: (row + 0.5) * CELL });
 
-function describe({ layout, position }: Episode, cell: Position): string {
+function describe(episode: Episode, cell: Position): string {
+  const { layout, position, available_coins = [], collected_coin_positions = [] } = episode;
   let type = "Free";
   if (same(cell, layout.start)) type = "Start";
   else if (same(cell, layout.goal)) type = "Destination";
   else if (layout.obstacles.some((p) => same(p, cell))) type = "Obstacle";
   else if (layout.hazards.some((p) => same(p, cell))) type = "Hazard";
+  else if (available_coins.some((p) => same(p, cell))) type = "Coin";
+  else if (collected_coin_positions.some((p) => same(p, cell))) type = "Collected coin";
   const agent = same(cell, position) ? ", agent" : "";
   return `Row ${cell.row}, column ${cell.col}: ${type}${agent}`;
 }
@@ -40,8 +43,33 @@ function Hazard({ x, y }: { x: number; y: number }) {
   );
 }
 
+function Coin({ x, y }: { x: number; y: number }) {
+  return (
+    <g className="coin">
+      <circle cx={x} cy={y} r={27} />
+      <circle className="coin-rim" cx={x} cy={y} r={19} />
+      <text x={x} y={y}>
+        $
+      </text>
+    </g>
+  );
+}
+
+/** What is left where a coin has been picked up. */
+function CollectedCoin({ x, y }: { x: number; y: number }) {
+  return (
+    <g className="coin-collected">
+      <circle cx={x} cy={y} r={24} />
+      <text x={x} y={y}>
+        ✓
+      </text>
+    </g>
+  );
+}
+
 export function Grid({ episode }: { episode: Episode }) {
   const { layout, position, path = [] } = episode;
+  const { available_coins = [], collected_coin_positions = [] } = episode;
   const size = layout.grid_size * CELL;
   const indices = Array.from({ length: layout.grid_size }, (_, i) => i);
   const cells = indices.flatMap((row) => indices.map((col) => ({ row, col })));
@@ -65,6 +93,12 @@ export function Grid({ episode }: { episode: Episode }) {
           points={path.map((p) => `${center(p).x},${center(p).y}`).join(" ")}
         />
         <circle className="agent" cx={agent.x} cy={agent.y} r={39} />
+        {collected_coin_positions.map((p) => (
+          <CollectedCoin key={`${p.row},${p.col}`} {...center(p)} />
+        ))}
+        {available_coins.map((p) => (
+          <Coin key={`${p.row},${p.col}`} {...center(p)} />
+        ))}
         {layout.obstacles.map((p) => (
           <Obstacle key={`${p.row},${p.col}`} {...center(p)} />
         ))}
@@ -108,6 +142,20 @@ export function Grid({ episode }: { episode: Episode }) {
             <Node x={50} y={50} label="2" />
           </svg>
           Destination
+        </span>
+        <span>
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <Coin x={50} y={50} />
+          </svg>
+          Coin
+        </span>
+        <span>
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            {/* Shown on the trail colour, as on the board. */}
+            <circle className="agent-trail" cx={50} cy={50} r={44} />
+            <CollectedCoin x={50} y={50} />
+          </svg>
+          Collected coin
         </span>
         <span>
           <svg viewBox="0 0 100 100" aria-hidden="true">

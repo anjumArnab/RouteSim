@@ -25,7 +25,13 @@ export function EpisodeStatus({ episode }: { episode: Episode }) {
         </dd>
       </div>
       <div>
-        <dt>Steps</dt>
+        <dt>Coins collected</dt>
+        <dd>
+          {episode.coins_collected ?? 0} <small>/ {episode.total_coins ?? 0}</small>
+        </dd>
+      </div>
+      <div>
+        <dt>Steps taken</dt>
         <dd>
           {episode.step_count} <small>/ {episode.max_steps}</small>
         </dd>
