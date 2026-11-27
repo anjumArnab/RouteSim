@@ -2,7 +2,8 @@
 
 A small reinforcement learning environment that AI agents drive remotely over MCP, with a
 live dashboard for watching them. An agent crosses a 7x7 grid from start to destination,
-avoiding obstacles and hazards. There are no training algorithms here, only the environment.
+avoiding obstacles and hazards and deciding which coins are worth a detour. There are no
+training algorithms here, only the environment.
 
 ```
 Claude Code / OpenCode ──MCP (Streamable HTTP, bearer token)──▶ /mcp ─┐
@@ -84,11 +85,15 @@ python -m backend
 - Dashboard: <http://127.0.0.1:8000>
 - MCP endpoint: `http://127.0.0.1:8000/mcp` (no trailing slash)
 
-Open the dashboard and paste the token of the agent you want to watch. It shows the grid
-with the agent's path (1 is the start, 2 the destination),
-episode ID, step count, cumulative reward, status, and a live log of that agent's tool
-calls. It follows whichever episode was used last, or you can pick one from the list. The
-token is kept only in that browser tab.
+Open the dashboard and paste the token of the agent you want to watch. It shows:
+
+- the grid with the agent's path, the start (**1**), the destination (**2**), available coins
+  (gold **$**) and collected coins (dashed ring with **✓**);
+- episode ID, status, coins collected out of the total, steps taken and cumulative reward;
+- a live log of that agent's tool calls, including coin pickups and the parts of each reward.
+
+It follows whichever episode was used last, or you can pick one from the list. The token is
+kept only in that browser tab.
 
 ### Frontend development
 
@@ -165,36 +170,83 @@ layout, so follow their documentation.
 
 Ask the agent in plain language, for example:
 
-> Using the routesim tools, start a new episode, inspect the environment, and move the agent
-> to the destination without touching any hazard. Then report the episode results.
+> Using the routesim tools, start a new episode and inspect the environment. Reach the
+> destination with the highest total reward you can: decide which coins are worth collecting
+> and stay off the hazards. Then report the episode results.
 
-Watch the dashboard (with the same agent's token) while it works.
+Watch the dashboard (with the same agent's token) while it works. Run the agent from a folder
+that does not contain this source code, because the tests include the best route.
 
 ## The environment
 
 ```
      0 1 2 3 4 5 6
-  0  S . . . . . .      S  start (0, 0)
-  1  . # # . H . .      G  destination (6, 6)
-  2  . . . . # . .      #  obstacle, impassable
-  3  . H # . . . H      H  hazard, ends the episode
-  4  . . # . # . .      .  free
-  5  # . . . H # .
-  6  . . H . . . G
+  0  S . . . . . C      S  start (0, 0)
+  1  . # # C H . .      G  destination (6, 6)
+  2  . C . . # C .      C  coin
+  3  . H # . . . H      #  obstacle, impassable
+  4  . . # . # . .      H  hazard, ends the episode
+  5  # . . . H # .      .  free
+  6  C . H . . . G
 ```
 
-Positions are `(row, col)` with row 0 at the top.
+Positions are `(row, col)` with row 0 at the top. The layout is the same in every episode.
 
-| Move result | Reward | Effect |
+### Rules
+
+- The agent moves one cell at a time: up, down, left or right.
+- Moving onto a coin collects it. It disappears and cannot reward the agent again in that
+  episode. `reset_episode` and new episodes start with all five coins.
+- Coins are optional. Reaching the destination ends the episode, however many are left.
+- Rewards already earned are kept if the episode later fails or runs out of steps.
+
+| Status | Cause |
+|---|---|
+| `in_progress` | The episode is running |
+| `succeeded` | The agent reached the destination |
+| `failed` | The agent entered a hazard |
+| `truncated` | Still not finished after 50 moves |
+
+No moves are accepted once an episode has ended.
+
+### Rewards
+
+Every move costs 1. Whatever the move causes is added to that cost, and the cumulative
+reward is the sum over all moves.
+
+| Part | Value | Applies when |
 |---|---|---|
-| `moved` | -1 | Agent moves one cell |
-| `blocked` | -2 | Wall or obstacle: position unchanged, step still counted |
-| `hazard` | -20 | Episode status becomes `failed` |
-| `goal` | +20 | Episode status becomes `succeeded` |
+| `step` | -1 | Every move |
+| `collision` | -1 | A wall or obstacle blocks the move (position unchanged) |
+| `coin` | +5 | The move collects a coin |
+| `goal` | +20 | The move reaches the destination |
+| `hazard` | -20 | The move enters a hazard |
 
-An episode still `in_progress` after 50 steps becomes `truncated`. The shortest successful
-route takes 12 moves for a total reward of 9. The layout and constants are in
-[backend/environment.py](backend/environment.py).
+| Move result (`outcome`) | Total reward |
+|---|---|
+| `moved` | -1 |
+| `blocked` | -2 |
+| `coin` | +4 |
+| `goal` | +19 |
+| `hazard` | -21 |
+
+Running out of steps has no extra penalty; the 50 step costs already count against it.
+
+### Strategies
+
+The shortest route does not pay the most, and neither does collecting everything.
+
+| Strategy | Moves | Coins | Total reward |
+|---|---|---|---|
+| Shortest route to the destination | 12 | 0 of 5 | 8 |
+| Collect every coin | 30 | 5 of 5 | 15 |
+| Balanced: skip the far coin at (6, 0) | 18 | 4 of 5 | **22** (best possible) |
+
+The coin at (6, 0) costs 12 extra moves and returns only 5.
+[tests/test_coin_strategies.py](tests/test_coin_strategies.py) plays all three routes and
+searches every reachable state to confirm that 22 is the maximum. The layout and reward
+values are in [backend/environment.py](backend/environment.py); changing either changes
+which strategy wins.
 
 ## MCP tools
 
@@ -202,13 +254,25 @@ route takes 12 moves for a total reward of 9. The layout and constants are in
 |---|---|---|
 | `start_episode` | none | New `episode_id` and first observation |
 | `reset_episode` | `episode_id` | Observation after returning to the start |
-| `get_observation` | `episode_id` | Position, neighbouring cells, valid actions, steps, reward, status |
-| `inspect_environment` | `episode_id` | Full map, obstacles, hazards, reward rules, step limit |
-| `move_agent` | `episode_id`, `direction` (`up`, `down`, `left`, `right`) | Outcome, reward, new observation |
-| `get_episode_status` | `episode_id` | Status, totals and the trajectory |
+| `get_observation` | `episode_id` | The observation described below |
+| `inspect_environment` | `episode_id` | Current map, obstacles, hazards, coins, reward rules, step limit |
+| `move_agent` | `episode_id`, `direction` (`up`, `down`, `left`, `right`) | Outcome, reward, reward parts, coin collected, new observation |
+| `get_episode_status` | `episode_id` | Status, totals, coins and the trajectory |
 
-`valid_actions` lists the directions that change the position. It includes moves into
-hazards, so check `neighbors` before moving.
+### Observation
+
+| Field | Meaning |
+|---|---|
+| `episode_id`, `status`, `done` | Which episode, and whether it has ended |
+| `position`, `start`, `goal` | Cells as `{"row": r, "col": c}` |
+| `neighbors` | Per direction: `free`, `coin`, `goal`, `hazard`, `obstacle` or `wall` |
+| `valid_actions` | Directions that change the position |
+| `available_coins` | Positions of the coins still on the grid |
+| `collected_coin_positions` | Coins picked up, in order |
+| `coins_collected`, `total_coins` | Counts |
+| `step_count`, `steps_remaining`, `cumulative_reward` | Progress so far |
+
+`valid_actions` includes moves into hazards, so check `neighbors` before moving.
 
 ## Authentication and isolation
 
@@ -269,10 +333,11 @@ MCP client over Streamable HTTP.
 
 | File | Covers |
 |---|---|
-| `tests/test_environment.py` | Layout, moves, rewards, terminal states, reset |
+| `tests/test_environment.py` | Layout, moves, rewards, coins, terminal states, reset |
 | `tests/test_backend.py` | Isolation, activity log, auth, configuration, live stream |
 | `tests/test_mcp_tools.py` | All six tools, errors, cross-agent access |
 | `tests/test_agent_flow.py` | An agent fails, resets and succeeds while the stream is checked |
+| `tests/test_coin_strategies.py` | Shortest, collect-all and balanced routes, directly and over MCP |
 
 ## Troubleshooting
 
@@ -283,5 +348,6 @@ MCP client over Streamable HTTP.
 | HTTP 401 from a client | The token matches one in `ROUTESIM_API_KEYS`; for OpenCode, restart its service after setting the variable |
 | `http://127.0.0.1:8000` shows "Not Found" | Build the dashboard, then restart the server |
 | Dashboard is empty while an agent runs | The dashboard token must be that agent's token |
+| Dashboard shows no coins after an update | Restart the server, then reload the page |
 | Live updates arrive late or in bursts | Turn off response buffering in your proxy |
 | "Episode ... was not found" | The server restarted, or the ID belongs to another agent. Start a new episode |

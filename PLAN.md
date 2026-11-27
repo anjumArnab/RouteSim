@@ -45,8 +45,9 @@ README.md
 | Isolation | Random episode IDs, owned by the creating agent. Another agent gets "not found". No implicit "current episode". |
 | Mutation | Only MCP tools change state. The HTTP API is read-only. |
 | Live updates | SSE. A new connection gets a full snapshot, then one event per tool call. |
-| Grid | Fixed 7x7 layout, `(row, col)`, row 0 at the top. |
-| Rewards | step -1, blocked -2 (agent stays), hazard -20 (episode fails), goal +20. Truncated after 50 steps. |
+| Grid | Fixed 7x7 layout with five coins, `(row, col)`, row 0 at the top. |
+| Rewards | Every move -1, plus collision -1 (agent stays), coin +5, goal +20 or hazard -20 (episode fails). Truncated after 50 steps. |
+| Coins | Optional, collected once per episode. Placed so a balanced route beats both the shortest and the collect-all route. |
 
 ## Tools
 
