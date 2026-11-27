@@ -18,9 +18,12 @@ from backend.service import EpisodeService
 INSTRUCTIONS = """\
 RouteSim is a 7x7 grid navigation environment. Move the agent from the start to
 the goal while avoiding obstacles (impassable) and hazards (end the episode).
+Collecting coins adds reward, but every move costs reward and reaching the goal
+ends the episode. Aim for the highest cumulative reward: weigh each coin against
+the extra moves it takes.
 
 1. Call start_episode and keep the returned episode_id.
-2. Call inspect_environment to see the whole map and the reward rules.
+2. Call inspect_environment to see the map, coin locations and reward rules.
 3. Call move_agent one step at a time until the episode is done.
 4. Call get_episode_status for the final result.
 
@@ -65,12 +68,12 @@ def build_mcp_server(service: EpisodeService) -> MCPServer:
 
     @server.tool(annotations=read_only)
     async def get_observation(episode_id: EpisodeId, ctx: Context) -> dict[str, Any]:
-        """Get the current position, neighbouring cells, valid actions, steps and reward."""
+        """Get position, neighbouring cells, available coins, valid actions, steps and reward."""
         return invoke(ctx, service.get_observation, episode_id)
 
     @server.tool(annotations=read_only)
     async def inspect_environment(episode_id: EpisodeId, ctx: Context) -> dict[str, Any]:
-        """Get the full map, start, goal, obstacles, hazards, actions and reward rules."""
+        """Get the map, start, goal, obstacles, hazards, coins, actions and reward rules."""
         return invoke(ctx, service.inspect_environment, episode_id)
 
     @server.tool(annotations=changes_state)
@@ -82,7 +85,7 @@ def build_mcp_server(service: EpisodeService) -> MCPServer:
 
     @server.tool(annotations=read_only)
     async def get_episode_status(episode_id: EpisodeId, ctx: Context) -> dict[str, Any]:
-        """Get the episode status, results and the trajectory of moves so far."""
+        """Get the episode status, coins collected, reward and the trajectory of moves."""
         return invoke(ctx, service.get_episode_status, episode_id)
 
     return server
